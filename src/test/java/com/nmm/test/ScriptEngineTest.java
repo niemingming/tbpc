@@ -1,7 +1,9 @@
 package com.nmm.test;
 
 import com.gargoylesoftware.htmlunit.WebClient;
+import com.gargoylesoftware.htmlunit.html.DomElement;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
+import com.nmm.tbpc.service.SourceLoader;
 import jdk.nashorn.api.scripting.ScriptObjectMirror;
 import org.jsoup.Jsoup;
 import org.jsoup.select.Elements;
@@ -28,6 +30,8 @@ public class ScriptEngineTest {
         webClient.getOptions().setTimeout(10000);//超时时间
         //连接获取
         HtmlPage page = webClient.getPage(url);
+        DomElement element = page.getElementById("J_DivItemDesc");
+        element.getLastElementChild().focus();
         String xml = page.asXml();
         //通过Jsoup解析页面
         Elements scripts = Jsoup.parse(xml).select("script");
@@ -52,5 +56,11 @@ public class ScriptEngineTest {
 
             }
         }
+    }
+    @Test
+    public void testloader() throws Exception {
+        String url = "https://item.taobao.com/item.htm?spm=a1z10.3-c.w4002-18396302249.62.6594374au3khN4&id=570316136094";
+        SourceLoader loader = new SourceLoader();
+        loader.loadProject(url);
     }
 }

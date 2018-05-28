@@ -11,8 +11,6 @@ import lombok.Data;
 public class ColorType {
     //价格
     private double price;
-    //运费
-    private double tranforPrice;
     //颜色描述
     private String desc;
     //图片名称

@@ -13,4 +13,6 @@ public interface SystemProperty {
     public static final String RIGHT_TOP_IMAGES = "rightPics";
     //详情图片前缀
     public static final String DETAIL_IMAGES = "detailPics";
+    //图片链接协议
+    public static final String PIC_SCHEMA = "http:";
 }
