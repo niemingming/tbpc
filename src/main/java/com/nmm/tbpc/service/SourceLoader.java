@@ -3,12 +3,16 @@ package com.nmm.tbpc.service;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.DomElement;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
+import com.nmm.tbpc.po.ColorPrice;
 import com.nmm.tbpc.po.ColorType;
 import com.nmm.tbpc.po.Project;
 import com.nmm.tbpc.variable.SystemProperty;
+import jdk.nashorn.api.scripting.ScriptObjectMirror;
+import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -18,10 +22,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author nmm 2018/5/28
@@ -92,52 +101,104 @@ public class SourceLoader {
         if (!file.exists()&& !file.isDirectory()){
             file.mkdirs();
         }
+        //获取Hub配置信息
+        Map<String,ScriptObjectMirror> hubConfig = loadScriptConfig(document);
         //load顶部左侧图片
         loadLeftTopPics(file,document);
         //load顶部右侧图片
-        loadRightTopPics(file,document,project);
+        loadRightTopPics(file,document,project,hubConfig.get("sku"));
         //加载底部详情图片
-        loadBottomDetailPics(file,document);
+        loadBottomDetailPics(file,document,hubConfig.get("g_config"));
+        //运费信息  itemId在g_config中，areaId如何获取？
+//        https://detailskip.taobao.com/json/deliveryFee.htm?areaId=370811&itemId=570004077409&_ksTS=1527586383959_1313&callback=jsonp211
+
         return project;
+    }
+
+    /**
+     * 加载js配置文件
+     * @param document
+     * @return
+     */
+    private Map<String,ScriptObjectMirror> loadScriptConfig(Document document) throws ScriptException {
+        Map<String,ScriptObjectMirror> hubconfig = new HashMap<>();
+        Elements scripts = document.select("script");
+        //创建js引擎
+        ScriptEngineManager manager = new ScriptEngineManager();
+        ScriptEngine javascript = manager.getEngineByName("javascript");
+        for (int i = 0; i < scripts.size(); i++){
+            String content = scripts.get(i).html();
+            if (content != null && content.contains("Hub = {}")){//sku配置信息，主要是颜色分类'
+                content = content.substring(content.indexOf("Hub = {}"),content.lastIndexOf("//"));
+                ScriptObjectMirror sku = (ScriptObjectMirror) javascript.eval(content + ";Hub.config.get('sku')");
+                hubconfig.put("sku",sku);
+            }
+            if (content != null && content.contains("var g_config")) {//获取详情图片配置信息
+                content = content.substring(content.indexOf("var g_config"),content.lastIndexOf("//"));
+                ScriptObjectMirror gConfig = (ScriptObjectMirror) javascript.eval("var location = {protocol:'http:'};"+content + ";g_config;");
+                hubconfig.put("g_config",gConfig);
+            }
+        }
+        return hubconfig;
     }
 
     /**
      * 加载底部详情图片
      * @param file
      * @param document
+     * @param g_config
      */
-    private void loadBottomDetailPics(File file, Document document) {
+    private void loadBottomDetailPics(File file, Document document, ScriptObjectMirror g_config) throws IOException {
         //详情页面懒加载，这是图片地址,地址从hub中取
-//        Hub.config.set('desc', {
-//                dummy       : false,
-//                apiImgInfo  : '//tds.alicdn.com/json/item_imgs.htm?t=TB1LpCmtSBYBeNjy0FeXXbnmFXa&sid=677255500&id=570316136094&s=f38b2410a68ac20855b7fee6bbd5f64d&v=2&m=1',
-//                similarItems: {
-//            api           : '//tds.alicdn.com/recommended_same_type_items.htm?v=1',
-//                    rstShopId     : '482284953',
-//                    rstItemId     : '570316136094',
-//                    rstdk         : 0,
-//                    rstShopcatlist: ''
-//        }
-//    });
-//        https://tds.alicdn.com/json/item_imgs.htm?cb=jsonp_image_info&t=TB1LpCmtSBYBeNjy0FeXXbnmFXa&sid=677255500&id=570316136094&s=f38b2410a68ac20855b7fee6bbd5f64d&v=2&m=1
+        String detailInfoUrl = SystemProperty.PIC_SCHEMA + g_config.get("descUrl") + "";
+        HttpClient client = HttpClients.createDefault();
+        HttpGet get = new HttpGet(detailInfoUrl);
+        HttpResponse response = client.execute(get);
+        String res = EntityUtils.toString(response.getEntity());
+        if (res != null&& res.contains("'")){
+            res = res.substring(res.indexOf("'") + 1,res.lastIndexOf("'"));
+        }
+        get.abort();
+        Document images = Jsoup.parse(res);
+        Elements imgs = images.select("img");
+        for (int i = 0; i < imgs.size(); i++ ){
+            String picurl = imgs.get(i).attr("src").replace("https:",SystemProperty.PIC_SCHEMA);
+            String filename = SystemProperty.DETAIL_IMAGES + i + picurl.substring(picurl.lastIndexOf("."));
+            FileOutputStream fos = new FileOutputStream(new File(file,filename));
+            get = new HttpGet(picurl);
+            client.execute(get).getEntity().writeTo(fos);
+            fos.flush();
+            fos.close();
+            get.abort();
+        }
     }
 
     /**
      * 加载顶部右侧图片
+     *
      * @param file
      * @param document
      * @param project
+     * @param sku  配置文件用于获取数据.
+     *             skuMap:价格映射表
+     *             propertyMemoMap:颜色分类标签
      */
-    private void loadRightTopPics(File file, Document document, Project project) throws Exception {
-        Elements lis = document.select("#J_isku ul li");
+    private void loadRightTopPics(File file, Document document, Project project, ScriptObjectMirror sku) throws Exception {
+        Elements lis = document.selectFirst("#J_isku J_Prop_Color ul").select("li");
         HttpClient client = HttpClients.createDefault();
         String flag = "background:url(";
+        //配置信息
+        ScriptObjectMirror property = sku.get("propertyMemoMap") == null ? null :(ScriptObjectMirror) sku.get("propertyMemoMap");
         for (int i = 0; i < lis.size(); i++ ){
             //js对应数据的关键字
             String key = lis.get(i).attr("data-value");
             ColorType colorType = new ColorType();
+            colorType.setDataValue(key);//key值
+            if (property != null){
+                colorType.setDesc(property.get(key) + "");//描述名称
+            }
             project.addColor(colorType);
-            //TODO 颜色分类详情，和快递费用详情
+
             //获取连接
             String picurl = lis.get(i).selectFirst("a").attr("style");
             if (picurl != null && picurl.contains(flag)){
@@ -145,7 +206,8 @@ public class SourceLoader {
                 picurl = picurl.substring(index,picurl.indexOf(")",index));
                 picurl = SystemProperty.PIC_SCHEMA + picurl.substring(0,picurl.lastIndexOf("_"));
                 HttpGet get = new HttpGet(picurl);
-                String filename = SystemProperty.RIGHT_TOP_IMAGES + i + picurl.substring(picurl.lastIndexOf("."));
+                String filename = SystemProperty.RIGHT_TOP_IMAGES + SystemProperty.FILE_SEPORTER  + colorType.getDesc() + SystemProperty.FILE_SEPORTER + i + picurl.substring(picurl.lastIndexOf("."));
+                colorType.setPic(filename);
                 FileOutputStream fos = new FileOutputStream(new File(file,filename));
                 try{
                     client.execute(get).getEntity().writeTo(fos);
@@ -155,6 +217,42 @@ public class SourceLoader {
                 }catch (Exception e){
                     e.printStackTrace();
                 }
+            }
+        }
+        //尝试获取规格信息
+        Elements dls = document.select("#J_isku J_Prop");
+        //价格信息
+        property = sku.get("skuMap") == null ? null : (ScriptObjectMirror) sku.get("skuMap");
+        if (dls.size() == 2){//表示有多个属性，还有尺码属性
+            Elements prolis = dls.get(1).select("ul li");
+            //遍历颜色分类，然后遍历尺码获取价格信息
+            for (int i = 0; i < project.getColorTypes().size(); i++){
+                ColorType colorType = project.getColorTypes().get(i);
+                for (int j = 0; j < prolis.size(); j++){
+                    String key = prolis.get(j).attr("data-value");
+                    key = ";" + colorType.getDataValue() + ";" + key + ";";
+                    //获取价格信息
+                    ScriptObjectMirror price = (ScriptObjectMirror) property.get(key);
+                    //获取尺码
+                    String style = prolis.get(j).selectFirst("span").html();
+                    //尺码信息
+                    ColorPrice colorPrice = new ColorPrice();
+                    colorPrice.setStyle(style);
+                    colorPrice.setPrice(Double.valueOf(price.get("price")+""));
+                    //添加样式价格
+                    colorType.getColorPrices().add(colorPrice);
+                }
+            }
+        }else {//没有对应尺码，就用默认值，查询价格方式一致
+            for (int i = 0; i < project.getColorTypes().size(); i++){
+                ColorType colorType = project.getColorTypes().get(i);
+                String key = ";" + colorType.getDataValue() + ";";
+                //获取价格信息
+                ScriptObjectMirror price = (ScriptObjectMirror) property.get(key);
+                ColorPrice colorPrice = new ColorPrice();
+                colorPrice.setPrice(Double.valueOf(price.get("price")+""));
+                //添加样式价格
+                colorType.getColorPrices().add(colorPrice);
             }
         }
     }

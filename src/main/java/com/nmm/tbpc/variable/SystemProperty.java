@@ -15,4 +15,6 @@ public interface SystemProperty {
     public static final String DETAIL_IMAGES = "detailPics";
     //图片链接协议
     public static final String PIC_SCHEMA = "http:";
+    //图片名称分隔符
+    public static final String FILE_SEPORTER = "_";
 }
