@@ -48,6 +48,16 @@ public class ProjectPropertyContainer {
     public static final String PICTURE_KEY = "picture";
     public static final String THICKNESS_NAME = "厚薄";
     public static final String THICKNESS_KEY = "thickness";
+    public static final String SCENE_NAME = "适用场景";
+    public static final String SCENE_KEY = "scene";
+    public static final String GROUP_NAME = "组合形式";
+    public static final String GROUP_KEY = "group";
+    public static final String MIANLIAO_NAME = "面料";
+    public static final String MIANLIAO_KEY = "mianliao";
+    public static final String SUIT_NAME = "衣门襟";
+    public static final String SUIT_KEY = "suit";
+
+
 
     public ProjectPropertyContainer(){
         init();
@@ -73,6 +83,10 @@ public class ProjectPropertyContainer {
         projectProperties.put(STYLE_NAME,new ProjectProperty(STYLE_NAME,STYLE_KEY));
         projectProperties.put(PICTURE_NAME,new ProjectProperty(PICTURE_NAME,PICTURE_KEY));
         projectProperties.put(THICKNESS_NAME,new ProjectProperty(THICKNESS_NAME,THICKNESS_KEY));
+        projectProperties.put(SCENE_NAME,new ProjectProperty(SCENE_NAME,SCENE_KEY));
+        projectProperties.put(GROUP_NAME,new ProjectProperty(GROUP_NAME,GROUP_KEY));
+        projectProperties.put(MIANLIAO_NAME,new ProjectProperty(MIANLIAO_NAME,MIANLIAO_KEY));
+        projectProperties.put(SUIT_NAME,new ProjectProperty(SUIT_NAME,SUIT_KEY));
 
     }
     public  ProjectProperty getPropertyByName(String name){

@@ -3,9 +3,9 @@ package com.nmm.tbpc.service;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.DomElement;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.nmm.tbpc.po.ColorPrice;
-import com.nmm.tbpc.po.ColorType;
-import com.nmm.tbpc.po.Project;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.nmm.tbpc.po.*;
 import com.nmm.tbpc.variable.SystemProperty;
 import jdk.nashorn.api.scripting.ScriptObjectMirror;
 import org.apache.http.HttpResponse;
@@ -37,48 +37,10 @@ import java.util.Map;
  * @description
  */
 @Service
-public class SourceLoader {
-
-    private String resPath = SystemProperty.RES_PATH;
+public class SourceLoader extends BaseLoader{
     private Logger logger = LoggerFactory.getLogger(SourceLoader.class);
 
-    /**
-     * 加载目标资源，返回document对象
-     * @param url
-     * @return
-     */
-    public Document loadDocument(String url) throws IOException {
-        //创建js执行脚本
-        WebClient webClient = new WebClient();
-        //设置超时时间
-        webClient.getOptions().setTimeout(10000);
-        //设置执行js
-        webClient.getOptions().setJavaScriptEnabled(true);
-        //设置不渲染css
-        webClient.getOptions().setCssEnabled(false);
-        //设置js报错不抛出
-        webClient.getOptions().setThrowExceptionOnScriptError(false);
-        //加载数据
-        HtmlPage page = webClient.getPage(url);
-        DomElement element = page.getElementById("J_DivItemDesc");
-        element.focus();
-        //等待js执行
-        webClient.waitForBackgroundJavaScript(10000);
 
-        String str = page.asXml();
-
-        //创建解析器
-        return Jsoup.parse(str);
-    }
-
-    /**
-     * 加载项目信息
-     * @param url
-     * @return
-     */
-    public Project loadProject(String url) throws Exception {
-        return loadProject(loadDocument(url));
-    }
 
     /**
      * 加载项目信息
@@ -86,21 +48,10 @@ public class SourceLoader {
      * @return
      */
     public Project loadProject(Document document) throws Exception {
-        Project project = new Project();
-        //获取名称
-        Element title = document.select("#J_Title h3").first();
-        if (title == null){
-            logger.info("无法获取项目名称！");
-            return null;
-        }
-        String projectName = title.text();
-        project.setProjectName(projectName);
-        String cachePath = resPath + "/" + projectName;
-        File file = new File(cachePath);
-        //创建缓存目录
-        if (!file.exists()&& !file.isDirectory()){
-            file.mkdirs();
-        }
+        Project project = super.loadProject(document);
+        File file = new File(project.getCachePath());
+        //加载属性信息
+        loadProjectProperty(document,project);
         //获取Hub配置信息
         Map<String,ScriptObjectMirror> hubConfig = loadScriptConfig(document);
         //load顶部左侧图片
@@ -110,9 +61,66 @@ public class SourceLoader {
         //加载底部详情图片
         loadBottomDetailPics(file,document,hubConfig.get("g_config"));
         //运费信息  itemId在g_config中，areaId如何获取？
-//        https://detailskip.taobao.com/json/deliveryFee.htm?areaId=370811&itemId=570004077409&_ksTS=1527586383959_1313&callback=jsonp211
+        loadFreightCast(project,hubConfig.get("g_config"));
 
         return project;
+    }
+
+    @Override
+    protected String selectProjectName(Document document) {
+        Element title = document.select("#J_Title h3").first();
+        if (title == null){
+            logger.info("无法获取项目名称！");
+            return null;
+        }
+        return title.text();
+    }
+
+    /**
+     * 加载商品属性信息
+     * @param document
+     * @param project
+     */
+    private void loadProjectProperty(Document document, Project project) {
+        Elements props = document.selectFirst("#attributes ul").select("li");
+        for (int i = 0; i < props.size(); i++) {
+            String value = props.get(i).attr("title");
+            String name = props.get(i).html().split(":")[0];
+            project.addProperty(name,value);
+        }
+    }
+
+    /**
+     *
+     * @param project
+     * @param g_config
+     */
+    private void loadFreightCast(Project project, ScriptObjectMirror g_config) throws IOException {
+        String itemId = g_config.get("itemId") + "";
+        String baseUrl = "http://detailskip.taobao.com/json/deliveryFee.htm?itemId=" + itemId + "&_ksTS=" +
+                System.currentTimeMillis()+ "_1313&callback=jsonp211&areaId=";
+        HttpClient client = HttpClients.createDefault();
+        Gson gson = new Gson();
+        for (String areaId : SystemProperty.AREA_IDS) {
+            HttpGet get = new HttpGet(baseUrl + areaId);
+            String res = EntityUtils.toString(client.execute(get).getEntity());
+            JsonObject freightjson = gson.fromJson(res.substring(res.indexOf("(") + 1,res.indexOf(")")),JsonObject.class);
+            JsonObject data = freightjson.getAsJsonObject("data");
+            String areaName = data.get("areaName").getAsString();
+            String freight = data.getAsJsonObject("serviceInfo").getAsJsonArray("list").get(0)
+                    .getAsJsonObject().get("info").getAsString();
+
+            FreightCast freightCast = new FreightCast();
+            freightCast.setAreaId(areaId);
+            freightCast.setAreaName(areaName);
+            if (freight.contains("免运费")){
+                freightCast.setCast(0);
+            }else {
+                freightCast.setCast(Double.valueOf(freight.substring(freight.indexOf("</span>")+ "</span>".length())));
+            }
+            project.addFreightCast(freightCast);
+
+        }
     }
 
     /**
@@ -164,12 +172,7 @@ public class SourceLoader {
         for (int i = 0; i < imgs.size(); i++ ){
             String picurl = imgs.get(i).attr("src").replace("https:",SystemProperty.PIC_SCHEMA);
             String filename = SystemProperty.DETAIL_IMAGES + i + picurl.substring(picurl.lastIndexOf("."));
-            FileOutputStream fos = new FileOutputStream(new File(file,filename));
-            get = new HttpGet(picurl);
-            client.execute(get).getEntity().writeTo(fos);
-            fos.flush();
-            fos.close();
-            get.abort();
+            loadPicture(file,filename,picurl);
         }
     }
 
@@ -179,13 +182,13 @@ public class SourceLoader {
      * @param file
      * @param document
      * @param project
-     * @param sku  配置文件用于获取数据.
+     * @param skup  配置文件用于获取数据.
      *             skuMap:价格映射表
      *             propertyMemoMap:颜色分类标签
      */
-    private void loadRightTopPics(File file, Document document, Project project, ScriptObjectMirror sku) throws Exception {
-        Elements lis = document.selectFirst("#J_isku J_Prop_Color ul").select("li");
-        HttpClient client = HttpClients.createDefault();
+    private void loadRightTopPics(File file, Document document, Project project, ScriptObjectMirror skup) throws Exception {
+        Elements lis = document.selectFirst("#J_isku .J_Prop_Color ul").select("li");
+        ScriptObjectMirror sku = (ScriptObjectMirror) skup.get("valItemInfo");
         String flag = "background:url(";
         //配置信息
         ScriptObjectMirror property = sku.get("propertyMemoMap") == null ? null :(ScriptObjectMirror) sku.get("propertyMemoMap");
@@ -194,8 +197,13 @@ public class SourceLoader {
             String key = lis.get(i).attr("data-value");
             ColorType colorType = new ColorType();
             colorType.setDataValue(key);//key值
-            if (property != null){
+            if (property != null&&property.get(key) != null){
                 colorType.setDesc(property.get(key) + "");//描述名称
+            }else {//尝试获取span数据
+                Element span = lis.get(i).selectFirst("span");
+                if (span != null) {
+                    colorType.setDesc(span.html());
+                }
             }
             project.addColor(colorType);
 
@@ -205,22 +213,17 @@ public class SourceLoader {
                 int index = picurl.indexOf(flag) + flag.length();
                 picurl = picurl.substring(index,picurl.indexOf(")",index));
                 picurl = SystemProperty.PIC_SCHEMA + picurl.substring(0,picurl.lastIndexOf("_"));
-                HttpGet get = new HttpGet(picurl);
                 String filename = SystemProperty.RIGHT_TOP_IMAGES + SystemProperty.FILE_SEPORTER  + colorType.getDesc() + SystemProperty.FILE_SEPORTER + i + picurl.substring(picurl.lastIndexOf("."));
                 colorType.setPic(filename);
-                FileOutputStream fos = new FileOutputStream(new File(file,filename));
-                try{
-                    client.execute(get).getEntity().writeTo(fos);
-                    fos.flush();
-                    fos.close();
-                    get.abort();
-                }catch (Exception e){
-                    e.printStackTrace();
-                }
+
+                loadPicture(file,filename,picurl);
+
+            }else{
+                colorType.setPic(colorType.getDesc());
             }
         }
         //尝试获取规格信息
-        Elements dls = document.select("#J_isku J_Prop");
+        Elements dls = document.select("#J_isku .J_Prop");
         //价格信息
         property = sku.get("skuMap") == null ? null : (ScriptObjectMirror) sku.get("skuMap");
         if (dls.size() == 2){//表示有多个属性，还有尺码属性
@@ -264,27 +267,19 @@ public class SourceLoader {
      */
     private void loadLeftTopPics(File file, Document document) throws Exception {
         Elements imgs = document.selectFirst(".tb-item-info-l #J_UlThumb").select("img");
-        HttpClient client = HttpClients.createDefault();
         for (int i = 0; i < imgs.size(); i++){
             String picurl = imgs.get(i).attr("data-src");
             if (picurl != null){
                 picurl = SystemProperty.PIC_SCHEMA + picurl.substring(0,picurl.lastIndexOf("_"));
-                HttpGet get = new HttpGet(picurl);
                 String filename = SystemProperty.LEFT_TOP_IMAGES + i+ picurl.substring(picurl.lastIndexOf("."));
-                FileOutputStream fos = new FileOutputStream(new File(file,filename));
                 try{
-                    client.execute(get).getEntity().writeTo(fos);
-                    fos.flush();
-                    fos.close();
-                    get.abort();
+                    loadPicture(file,filename,picurl);
                 }catch (Exception e){
                     e.printStackTrace();
                 }
 
             }
         }
-
-
     }
 
     public String getResPath() {

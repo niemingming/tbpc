@@ -3,15 +3,24 @@ package com.nmm.test;
 import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.html.DomElement;
 import com.gargoylesoftware.htmlunit.html.HtmlPage;
+import com.nmm.tbpc.po.Project;
 import com.nmm.tbpc.service.SourceLoader;
+import com.nmm.tbpc.service.SourceLoader1688;
 import jdk.nashorn.api.scripting.ScriptObjectMirror;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.CookieStore;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.cookie.Cookie;
+import org.apache.http.impl.client.BasicCookieStore;
+import org.apache.http.impl.client.HttpClients;
 import org.jsoup.Jsoup;
 import org.jsoup.select.Elements;
 import org.junit.Test;
 
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
-import java.io.IOException;
+import java.util.List;
 
 /**
  * @author nmm 2018/5/28
@@ -59,8 +68,30 @@ public class ScriptEngineTest {
     }
     @Test
     public void testloader() throws Exception {
-        String url = "https://item.taobao.com/item.htm?spm=a1z10.3-c.w4002-18396302249.62.6594374au3khN4&id=570316136094";
+        String url = "https://item.taobao.com/item.htm?spm=a21bz.7725273.1998564503.1.20d63db8fVmZS2&id=565402344300&umpChannel=qianggou&u_channel=qianggou";
         SourceLoader loader = new SourceLoader();
-        loader.loadProject(url);
+        Project project = loader.loadProject(url);
+        System.out.println(project);
     }
+    @Test
+    public void testloader1688() throws Exception {
+        String url = "https://detail.1688.com/offer/549425047212.html?spm=a261y.7663282.0.0.70383e4cdSGsN9";
+        SourceLoader1688 loader = new SourceLoader1688();
+        Project project = loader.loadProject(url);
+        System.out.println(project);
+    }
+    @Test
+    public void testloader1688111() throws Exception {
+        CookieStore cookieStore = new BasicCookieStore();
+        String url = "http://www.1688.com";
+        HttpClient client = HttpClients.custom().setDefaultCookieStore(cookieStore).build();
+        HttpGet get = new HttpGet(url);
+        HttpResponse response = client.execute(get);
+        List<Cookie> cookies = cookieStore.getCookies();
+        for (Cookie cookie:cookies){
+            System.out.println(cookie.getName() + "==" + cookie.getValue());
+        }
+        System.currentTimeMillis();
+    }
+
 }
