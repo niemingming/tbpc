@@ -29,6 +29,8 @@ public class Project {
     private List<ColorType> colorTypes = new ArrayList<ColorType>();
     //运费
     private List<FreightCast> freightCasts = new ArrayList<>();
+    //详情描述文字
+    private String description = "";
     //添加属性
     public void addProperty(String name ,String value){
         ProjectProperty projectProperty = propertyContainer.getPropertyByName(name);
@@ -65,6 +67,8 @@ public class Project {
         for (FreightCast freightCast:freightCasts){
             res += "\r\n    " + freightCast.getAreaName() + ":" + freightCast.getCast();
         }
+        res += "\r\n详情描述：";
+        res += "\r\n    " + description;
         return res;
     }
 

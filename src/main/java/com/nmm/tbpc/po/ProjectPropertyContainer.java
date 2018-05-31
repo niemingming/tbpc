@@ -26,7 +26,7 @@ public class ProjectPropertyContainer {
     public static final String TOY_TYPE_KEY = "toyType";
     public static final String QUALITY_NAME = "材质";
     public static final String QUALITY_KEY = "quality";
-    public static final String AGE_RANGE_NAME = "使用年龄";
+    public static final String AGE_RANGE_NAME = "适用年龄";
     public static final String AGE_RANGE_KEY = "ageRange";
     public static final String SAFE_NAME = "安全等级";
     public static final String SAFE_KEY = "safe";
@@ -56,6 +56,8 @@ public class ProjectPropertyContainer {
     public static final String MIANLIAO_KEY = "mianliao";
     public static final String SUIT_NAME = "衣门襟";
     public static final String SUIT_KEY = "suit";
+    public static final String SUGGEST_PRICE_NAME = "建议零售价";
+    public static final String SUGGEST_PRICE_KEY = "suggestPrice";
 
 
 
@@ -87,6 +89,7 @@ public class ProjectPropertyContainer {
         projectProperties.put(GROUP_NAME,new ProjectProperty(GROUP_NAME,GROUP_KEY));
         projectProperties.put(MIANLIAO_NAME,new ProjectProperty(MIANLIAO_NAME,MIANLIAO_KEY));
         projectProperties.put(SUIT_NAME,new ProjectProperty(SUIT_NAME,SUIT_KEY));
+        projectProperties.put(SUGGEST_PRICE_NAME,new ProjectProperty(SUGGEST_PRICE_NAME,SUGGEST_PRICE_KEY));
 
     }
     public  ProjectProperty getPropertyByName(String name){

@@ -83,7 +83,7 @@ public class ScriptEngineTest {
     @Test
     public void testloader1688111() throws Exception {
         CookieStore cookieStore = new BasicCookieStore();
-        String url = "http://www.1688.com";
+        String url = "https://detail.1688.com/offer/549425047212.html?spm=a261y.7663282.0.0.70383e4cdSGsN9";
         HttpClient client = HttpClients.custom().setDefaultCookieStore(cookieStore).build();
         HttpGet get = new HttpGet(url);
         HttpResponse response = client.execute(get);
@@ -91,6 +91,8 @@ public class ScriptEngineTest {
         for (Cookie cookie:cookies){
             System.out.println(cookie.getName() + "==" + cookie.getValue());
         }
+        System.out.println(Jsoup.connect("https://detail.1688.com/offer/549425047212.html?spm=a261y.7663282.0.0.70383e4cdSGsN9")
+                .get());
         System.currentTimeMillis();
     }
 
