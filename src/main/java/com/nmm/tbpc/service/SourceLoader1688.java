@@ -12,6 +12,7 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -22,6 +23,7 @@ import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import javax.xml.ws.ServiceMode;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,7 +39,17 @@ public class SourceLoader1688 extends BaseLoader {
     }
 
     public Project loadProject(String url) throws Exception {
-        return super.loadProject(url + "&sk=consign");
+        return super.loadProject(url );
+    }
+
+    @Override
+    public Document loadDocument(String url) throws IOException {
+        FileInputStream fileInputStream = new FileInputStream(url);
+        byte[] buff = new byte[fileInputStream.available()];
+        fileInputStream.read(buff);
+        fileInputStream.close();
+
+        return Jsoup.parse(new String(buff,"GBK"));
     }
 
     @Override
@@ -55,7 +67,7 @@ public class SourceLoader1688 extends BaseLoader {
         //加载底部新详情图片
         loadBottomDetailPics(file,document,project);
         //加载运费信息
-        loadFreightCast(document,project,config.get("config"));
+//        loadFreightCast(document,project,config.get("config"));
         return project;
     }
 
@@ -69,6 +81,9 @@ public class SourceLoader1688 extends BaseLoader {
     private void loadProjectProperty(Document document, Project project) {
         Elements props = document.selectFirst("#mod-detail-attributes tbody").select("td");
         for (int i = 0; i < props.size(); i+=2) {
+            if(i+1 >= props.size() ){
+                break;
+            }
             String name = props.get(i).text();
             String value = props.get(i+1).html();
             project.addProperty(name,value);
@@ -101,7 +116,7 @@ public class SourceLoader1688 extends BaseLoader {
         for (int i = 0; i < scripts.size(); i++){
             String content = scripts.get(i).html();
             if (content != null && content.contains("var iDetailData")){//sku配置信息，主要是颜色分类'
-                content = content.substring(content.indexOf("var iDetailData"),content.lastIndexOf("//"));
+                content = content.substring(content.indexOf("var iDetailData"));//,content.lastIndexOf("//")
                 ScriptObjectMirror sku = (ScriptObjectMirror) javascript.eval(content + ";iDetailData");
                 hubconfig.put("sku", (ScriptObjectMirror) sku.get("sku"));
             }
@@ -189,20 +204,27 @@ public class SourceLoader1688 extends BaseLoader {
      * @param project
      */
     private void loadBottomDetailPics(File file, Document document, Project project) throws IOException {
-        Element detail = document.selectFirst("#mod-detail-description");
+        Element detail = document.selectFirst("#desc-lazyload-container");
+        String infoUrl = detail.attr("data-tfs-url");
+        //从这里加载数据
+        HttpClient client = HttpClients.createDefault();
+        HttpGet get = new HttpGet(infoUrl);
+        String scripts = EntityUtils.toString(client.execute(get).getEntity());
+        scripts  = scripts.substring(scripts.indexOf(":\"") + 2,scripts.lastIndexOf("\"}")).replace("\\\"","");
+
         //获取文字描述
-        Elements descs = detail.select("span");
-        for (int i = 0; i < descs.size(); i++) {
-            String content = descs.get(i).html();
-            if (content != null){
-                content = content.replace("&nbsp;","");
-                if (content.length() > 0){
-                    project.setDescription(project.getDescription() + content + "\r\n");
-                }
-            }
-        }
+//        Elements descs = detail.select("span");
+//        for (int i = 0; i < descs.size(); i++) {
+//            String content = descs.get(i).html();
+//            if (content != null){
+//                content = content.replace("&nbsp;","");
+//                if (content.length() > 0){
+//                    project.setDescription(project.getDescription() + content + "\r\n");
+//                }
+//            }
+//        }
         //获取图片信息
-        Elements imgs = detail.select("img");
+        Elements imgs = Jsoup.parse(scripts).select("img");
         for (int i = 0; i < imgs.size(); i++){
             String picurl = imgs.get(i).attr("src");
             String filename = SystemProperty.DETAIL_IMAGES + i + picurl.substring(picurl.lastIndexOf("."));
